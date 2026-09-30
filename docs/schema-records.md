@@ -72,26 +72,27 @@ slow to land.
 A likely fix: check `'__changeset__' in obj` before reading it. A schema
 record's `has` trap returns `false` for unknown names instead of throwing.
 
-### Key naming ⚠ verify
+### Key and type naming
 
 The API uses dasherized keys, such as `created-at`. The boilerplate uses
-camelCase names, such as `createdAt`.
+camelCase names, such as `createdAt`. One layer has to own the conversion:
 
-Today the legacy `JSONAPISerializer` converts between them. Its
-`keyForAttribute` dasherizes names on the way out and matches them on the way
-in. So the cache stores `createdAt`.
+- **Legacy requests** (`store.findRecord`, `store.query`) go through the legacy
+  `JSONAPISerializer`. It renames `created-at` to `createdAt` before the data
+  reaches the cache. A schema used this way must not set `sourceKey`.
+- **Request builders** (`store.request(findRecord(...))`) skip the serializer.
+  The cache holds the API's keys as sent, so the schema needs
+  `sourceKey: 'created-at'`.
 
-The draft schema also set `sourceKey: 'created-at'` on `createdAt` and
-`updatedAt`. WarpDrive reads `sourceKey` as the key to look up in the cache, not
-the key the API sends. The serializer has already renamed the key by then, so
-the record reads a key that does not exist, and those fields come back empty.
+The boilerplate branch `warpdrive-page-schema-migration` (commit `bfa46b0`)
+takes the second path, so its `sourceKey` is correct.
 
-One layer has to own the conversion:
+Skipping the serializer also skips its type conversion. Mirage sent plural
+types (`pages`), and the schema is registered as `page`. `bfa46b0` fixed this
+for Mirage with `typeKeyForModel` in the Mirage serializer.
 
-- **Keep the serializer.** Drop `sourceKey` from the schemas. This is the
-  smaller change while the app still uses legacy requests.
-- **Drop the serializer.** Keep `sourceKey`, and move to request handlers that
-  put the API's keys straight into the cache. This is the longer-term shape.
+⚠ verify: the real API must also send the singular type. If it sends `pages`,
+the schema lookup fails in production even though the tests pass.
 
 ### Mirage models ⚠ verify
 
@@ -103,8 +104,12 @@ is replaced by a schema drops out of Mirage, and its tests lose their fake API.
 
 - [ ] Reproduce the add-on's failures with a schema record in a test
 - [ ] Make the add-on's property checks safe for schema records
-- [ ] Make `ember-changeset` work with schema records
-- [ ] Settle key naming for `page` in the boilerplate
+- [x] Make `ember-changeset` work with schema records (uncommitted, branch
+      `schema-record-support` in `validated-changeset` and `ember-changeset`)
+- [ ] Commit, push to the forks, and open upstream pull requests linking
+      ember-changeset#710
+- [ ] Fix the boilerplate's `getModelName` on destroyed records
+- [x] Settle key naming for `page` in the boilerplate (`bfa46b0`)
 - [ ] Update the boilerplate's Mirage model import
 - [ ] Roll the approach out to the other boilerplate models
 
@@ -116,3 +121,51 @@ Record what each step shows here, with the commit that shows it.
   `adfinis/ember-validated-form` has no branch, pull request or issue about
   schema records. The nearest is issue #1213, "Convert to v2 addon". The
   changeset side is covered only by ember-changeset#710.
+- **2026-09-30. Reading pages already works on a boilerplate branch.**
+  `warpdrive-page-schema-migration` (`bfa46b0`, 2026-06-09) registers
+  `PageSchema` and a `date` transformation. It fetches pages with request
+  builders and fixes the naming described above. It also stops `model-utils`
+  from probing `.proxy` and `.constructor.modelName`, which throw on a schema
+  record. Its commit message names the one thing left: the page forms break on
+  `ember-changeset`. It suggests native mutation (`checkout` plus
+  `updateRecord`) as the follow-up. `warpdrive-schema-migration` is the same
+  commit with `vite-upgrade` merged in (2026-06-14). Neither branch was merged
+  into `vite-upgrade`. The schema was deleted from `vite-upgrade` the next day.
+- **2026-09-30. Test run on `warpdrive-page-schema-migration`.**
+  - `ember test --path dist` crashed before any test ran. This add-on's
+    `index.js` read `app.options` with no host app. It is fixed here in
+    `index.js`. `vite-upgrade` works around it with a pnpm patch.
+  - Admin Page: the index test passes. All four Create tests fail with
+    `No field named __changeset__ on page`, thrown from `isChangeset`. This
+    confirms the changeset blocker.
+  - Admin Embed File: Destroy fails with `<model::embed-file:4> is not a
+ReactiveResource or Model known to WarpDrive`. That is a regression from
+    `bfa46b0`: `getModelName` now calls `recordIdentifierFor`, which throws on
+    a destroyed record. The old `constructor.modelName` did not. ⚠ verify the
+    exact caller.
+- **2026-09-30. Changeset fixes, one layer at a time.** Each fix below moved
+  the page Create tests one step further. Each has a failing test first, and
+  each package's full suite passes with it.
+  1. `validated-changeset`, branch `schema-record-safe-is-changeset`:
+     `isChangeset` checks `'__changeset__' in obj` before reading it.
+  2. `validated-changeset` and `ember-changeset` (branch
+     `schema-record-safe-proxy`): the changeset Proxy turned every key into a
+     string with `key.toString()`. Ember's `get` reads the Symbol
+     `PROXY_CONTENT`, which became the string `"Symbol(PROXY_CONTENT)"` and was
+     looked up on the record. Setting a Symbol key also recorded a bogus
+     change. Symbol keys now go to the changeset object itself.
+  3. `No field named unknownProperty on page`. When a field has no value yet,
+     Ember's `get` checks the changeset for an `unknownProperty` hook. The
+     changeset forwarded any key it did not know to its content, so the record
+     was asked and threw. `set`, `save` and validation also read the content
+     this way. Fixed at the root: `validated-changeset` now asks the content
+     only through `contentHasKey` (`key in content`). `ember-changeset`
+     overrides it to also allow `ObjectProxy` content and content with its own
+     `unknownProperty`, since `in` cannot see keys those forward.
+  4. `No field named relationshipFor on page`, in `ember-changeset`'s
+     `safeGet` when `ember-data` is installed. Fixed with an `in` check.
+
+  Result: all 8 Admin Page Create and Update tests pass. The one failure left
+  is Destroy, from the `getModelName` regression above. Suites:
+  `validated-changeset` 406 passed and 2 skipped (as before), `ember-changeset`
+  210 passed and 1 todo (as before). Lint is clean in both.
