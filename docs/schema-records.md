@@ -110,8 +110,8 @@ is replaced by a schema drops out of Mirage, and its tests lose their fake API.
 - [ ] Open upstream pull requests linking ember-changeset#710
 - [x] Fix the boilerplate's `getModelName` on destroyed records
 - [x] Settle key naming for `page` in the boilerplate (`bfa46b0`)
-- [ ] Update the boilerplate's Mirage model import
-- [ ] Roll the approach out to the other boilerplate models
+- [x] Update the boilerplate's Mirage model import
+- [x] Roll the approach out to the other boilerplate models
 
 ## Findings
 
@@ -213,3 +213,28 @@ ReactiveResource or Model known to WarpDrive`. That is a regression from
   boilerplate's `ember-validated-form@8.0.1` patch is dropped, because the fork
   carries the same `config()` fix. All 118 tests pass, including Admin Role,
   and lint is clean, including types.
+
+- **2026-09-30. Every boilerplate resource is now a schema.** All seven
+  resources are legacy-mode schemas in `app/data/<type>/schema.ts`, and
+  `app/models/` is gone. They read and save through the adapter and
+  serializer, so the serializer owns naming both ways. The page branch's
+  request-builder reads were the cause of the naming bug: they stored
+  `created-at` while saves stored `createdAt`, so dates were `null` after a
+  save. The pages now read through the serializer too, and `sourceKey` is gone.
+  Four more fixes were needed, each with a failing test first:
+  - `validated-changeset`: `get()` read a changed value at the path `''` when
+    the key had no nested part, which a schema record throws on (`cef6007`).
+  - The boilerplate serializer: the legacy `shouldSerializeHasMany` calls
+    `determineRelationshipType`, which WarpDrive's stand-in class for a schema
+    type lacks. It now reads the inverse from the schema.
+  - A `@warp-drive/core` patch: Ember's `isEmpty` reads `unknownProperty` and
+    `size` off any object, so `validatePresence` on a relationship threw. Both
+    names join WarpDrive's list of exempt names, next to `length`.
+  - A `@warp-drive/legacy` patch: a destroyed schema record's relationships
+    threw instead of reading as `null` or `[]`, as a Model's do.
+
+  `User#setRole` moved to `app/utils/user-utils.ts`, because a schema record
+  cannot carry methods. The scaffold generator now writes schemas. A resource
+  generated with every option passes its 11 acceptance tests. The boilerplate
+  suite is 146 of 146, with lint clean. Both patches belong upstream in
+  WarpDrive.
