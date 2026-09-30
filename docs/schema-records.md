@@ -206,3 +206,10 @@ ReactiveResource or Model known to WarpDrive`. That is a regression from
     action (8.0.1), and it listens to native form submit events (8.0.2). It
     also adds an `ember-modifier` peer, which the boilerplate already has. The
     boilerplate tests pass with both.
+
+- **2026-09-30. `vite-upgrade` merged into the boilerplate branch.**
+  `warpdrive-page-schema-migration` now has `vite-upgrade`'s 77 commits
+  (merge `b842204`). The page schema that `vite-upgrade` deleted is kept. The
+  boilerplate's `ember-validated-form@8.0.1` patch is dropped, because the fork
+  carries the same `config()` fix. All 118 tests pass, including Admin Role,
+  and lint is clean, including types.
