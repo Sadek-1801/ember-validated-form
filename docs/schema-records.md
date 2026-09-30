@@ -146,10 +146,10 @@ ReactiveResource or Model known to WarpDrive`. That is a regression from
 - **2026-09-30. Changeset fixes, one layer at a time.** Each fix below moved
   the page Create tests one step further. Each has a failing test first, and
   each package's full suite passes with it.
-  1. `validated-changeset`, branch `schema-record-safe-is-changeset`:
+  1. `validated-changeset`, branch `schema-record-support`:
      `isChangeset` checks `'__changeset__' in obj` before reading it.
-  2. `validated-changeset` and `ember-changeset` (branch
-     `schema-record-safe-proxy`): the changeset Proxy turned every key into a
+  2. `validated-changeset` and `ember-changeset` (both on branch
+     `schema-record-support`): the changeset Proxy turned every key into a
      string with `key.toString()`. Ember's `get` reads the Symbol
      `PROXY_CONTENT`, which became the string `"Symbol(PROXY_CONTENT)"` and was
      looked up on the record. Setting a Symbol key also recorded a bogus
@@ -169,3 +169,16 @@ ReactiveResource or Model known to WarpDrive`. That is a regression from
   is Destroy, from the `getModelName` regression above. Suites:
   `validated-changeset` 406 passed and 2 skipped (as before), `ember-changeset`
   210 passed and 1 todo (as before). Lint is clean in both.
+
+- **2026-09-30. Boilerplate wired to the forks, full suite green except Admin
+  Role.** On `warpdrive-page-schema-migration`, `pnpm-workspace.yaml` overrides
+  `validated-changeset`, `ember-changeset` and `ember-validated-form` to the
+  `Sadek-1801` forks and allowlists their `prepare` scripts. `getModelName`
+  now reads `constructor.modelName` first, which legacy Models and legacy-mode
+  schema records both answer even after they are unloaded, and falls back to
+  `recordIdentifierFor`. `getInternalModelName` unwraps a `proxy` wrapper again,
+  checking with `in` first. 83 of 83 tests pass, including all 11 Admin Page
+  tests and the `FormTitle` tests that `bfa46b0` had broken.
+  - Admin Role still fails, unrelated to this work: `LazyModel` passes
+    `ember-concurrency-retryable`'s `retryable` option, which is not
+    registered. The `lazy-model-tracked-function` branch replaces that task.
