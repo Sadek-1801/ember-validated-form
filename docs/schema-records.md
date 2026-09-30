@@ -104,11 +104,11 @@ is replaced by a schema drops out of Mirage, and its tests lose their fake API.
 
 - [ ] Reproduce the add-on's failures with a schema record in a test
 - [ ] Make the add-on's property checks safe for schema records
-- [x] Make `ember-changeset` work with schema records (uncommitted, branch
+- [x] Make `ember-changeset` work with schema records (branch
       `schema-record-support` in `validated-changeset` and `ember-changeset`)
-- [ ] Commit, push to the forks, and open upstream pull requests linking
-      ember-changeset#710
-- [ ] Fix the boilerplate's `getModelName` on destroyed records
+- [x] Commit and push to the forks
+- [ ] Open upstream pull requests linking ember-changeset#710
+- [x] Fix the boilerplate's `getModelName` on destroyed records
 - [x] Settle key naming for `page` in the boilerplate (`bfa46b0`)
 - [ ] Update the boilerplate's Mirage model import
 - [ ] Roll the approach out to the other boilerplate models
@@ -182,3 +182,27 @@ ReactiveResource or Model known to WarpDrive`. That is a regression from
   - Admin Role still fails, unrelated to this work: `LazyModel` passes
     `ember-concurrency-retryable`'s `retryable` option, which is not
     registered. The `lazy-model-tracked-function` branch replaces that task.
+
+- **2026-09-30. Backward-compatibility review.** Each change was checked
+  against the released packages.
+  - `ember-changeset`'s `safeGet` threw `Cannot use 'in' operator` when given a
+    string or number. The old optional chaining returned `undefined` there. It
+    now checks for an object first.
+  - `validated-changeset` stopped reading fields off function content, and
+    `isChangeset` stopped seeing a function marked as a changeset. Both work
+    again.
+  - One change stays. `validated-changeset` now reads a key off the content
+    only when `key in content` is true. A plain object, a class instance, an
+    Ember object and a legacy `Model` all answer `in` correctly. A JavaScript
+    `Proxy` with a `get` trap and no `has` trap does not. Such content used to
+    return its values and now returns `undefined`. Code with content like that
+    can override `contentHasKey`. The pull request must say so, so the
+    maintainers can choose the version bump.
+  - The changeset has two new methods, `contentHasKey` and `_getContent`. A
+    content field with either name is now hidden behind the method, like any
+    field named `save` or `validate` already is.
+  - The boilerplate's `ember-validated-form` override also moves it from 8.0.0
+    to 8.0.2. That brings two upstream fixes: the form yields its submit
+    action (8.0.1), and it listens to native form submit events (8.0.2). It
+    also adds an `ember-modifier` peer, which the boilerplate already has. The
+    boilerplate tests pass with both.
